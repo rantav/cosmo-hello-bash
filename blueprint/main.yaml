@@ -1,0 +1,77 @@
+#######
+# Types and implementation details.
+#
+# Virtual machine is started using Cloudify's built-in OpenStack plugin.
+# Python simple HTTP server is started using Cloudify's Python web server plugin
+# which can be found here: https://github.com/CloudifySource/cosmo-plugin-python-webserver
+#
+
+# cloudify.types contains Cloudify's built-in types, relationships, workflows etc...
+# openstack_host_provisioner contains Cloudify's built-in OpenStack plugin definition.
+imports:
+    - cloudify.types
+    - openstack_host_provisioner
+
+blueprint:
+    name: hello_bash
+    topology:
+        -   name: vm
+            type: openstack_host
+
+        -   name: bash_runner
+            type: bash_runner
+            properties:
+                port: 12345
+            relationships:
+                -   type: cloudify.relationships.contained_in
+                    target: vm
+
+# Python web server plugin definition with a specification to run in an agent vm.
+# Plugin will be downloaded and installed from the provided url.
+plugins:
+    bash_runner:
+        derived_from: cloudify.plugins.agent_plugin
+        properties:
+            url: https://github.com/rantav/cosmo-plugin-bash-runner/archive/master.zip
+
+types:
+    openstack_host:
+        derived_from: cloudify.types.host       
+        properties:
+            install_agent: true
+            worker_config:
+                user: ubuntu
+                port: 22
+                key: ~/.ssh/cloudify-agents-kp.pem
+            nova_config:
+                region: az-2.region-a.geo-1
+                instance:
+                    name: rantav_hello_bash
+                    image: 67074
+                    flavor: 101
+                    key_name: cloudify-agents-kp-rantav2
+        interfaces:
+            cloudify.interfaces.lifecycle:
+                -   create: cloudify.plugins.openstack_host_provisioner.tasks.provision
+                -   start: cloudify.plugins.openstack_host_provisioner.tasks.start
+        policies:
+            -   name: start_detection_policy
+                rules:
+                    -   type: state_equals
+                        properties:
+                            service: openstack machine status
+                            state: running
+
+    bash_runner:
+        derived_from: cloudify.types.base
+        interfaces:
+            cloudify.interfaces.lifecycle:
+                -   start: bash_runner.tasks.start
+        policies:
+            -   name: start_detection_policy
+                rules:
+                    -   type: state_equals
+                        properties:
+                            service: hello_bash status
+                            state: running
+
